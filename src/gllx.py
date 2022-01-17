@@ -12,6 +12,18 @@ def lxRotate(roll, pitch, yaw):
     return glRotate(angle, x, y, z)
 
 
+def lxFrustum(focal_length, width, height, near, far):
+    q = 35.9 / focal_length
+    p = min(1, 3 / 4 * width / height)
+    right = q * near / 2 * p
+    top = right * height / width
+    # 视景体的left/right/bottom/top/near/far六个面
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    glFrustum(-right, right, -top, top, near, far)
+    glMatrixMode(GL_MODELVIEW)
+
+
 def lxVertex3f(x, y, z):
     return glVertex3f(-x, z, -y)
 

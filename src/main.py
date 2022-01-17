@@ -16,6 +16,9 @@ class Game:
         self.x, self.y = 0, 0
         self.phi, self.theta = 0, 0
         self.i = 0
+        self.j = 0
+        self.focal_length = 50
+        self.realtime = False
 
     def load_data(self):
         self.datasets = []
@@ -48,18 +51,43 @@ class Game:
             self.i = (self.i + len(self.datasets) - 1) % len(self.datasets)
         elif key == b']':
             self.i = (self.i + 1) % len(self.datasets)
-        elif key == b'q':
+        elif key == b' ':
             glutDestroyWindow(glutGetWindow())
+        elif key == b'w':
+            glTranslate(0, 0, 0.01)
+        elif key == b's':
+            glTranslate(0, 0, -0.01)
+        elif key == b'a':
+            glTranslate(0.01, 0, 0)
+        elif key == b'd':
+            glTranslate(-0.01, 0, 0)
+        elif key == b'q':
+            glTranslate(0, 0.01, 0)
+        elif key == b'e':
+            glTranslate(0, -0.01, 0)
+        elif key == b'r':
+            self.focal_length += 1
+            lxFrustum(self.focal_length, self.win_w, self.win_h, 0.1, 2.0)
+        elif key == b'f':
+            self.focal_length -= 1
+            lxFrustum(self.focal_length, self.win_w, self.win_h, 0.1, 2.0)
+        elif key == b'p':
+            self.realtime = not self.realtime
 
     def draw(self):
         print('draw')
-        # glutPostRedisplay()
+        if self.realtime:
+            glutPostRedisplay()
+            self.j += 1
+            if self.j == 100:
+                self.j = 0
+                self.i = (self.i + 1) % len(self.datasets)
         # 清除屏幕及深度缓存
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glPushMatrix()
 
         # 设置视点
-        lxLookAt(0.25, self.phi, self.theta)
+        lxLookAt(0.50, self.phi, self.theta)
 
         glPushMatrix()
         glScale(0.10, 0.10, 0.10)
@@ -93,9 +121,7 @@ class Game:
     def reshape(self, width, height):
         self.win_w, self.win_h = width, height
         glViewport(0, 0, self.win_w, self.win_h)
-        glLoadIdentity()
-        # 视景体的left/right/bottom/top/near/far六个面
-        glFrustum(-0.08 * self.win_w / self.win_h, 0.08 * self.win_w / self.win_h, -0.08, 0.08, 0.1, 2.0)
+        lxFrustum(self.focal_length, self.win_w, self.win_h, 0.01, 2.0)
 
     def init(self):
         glutInit()
