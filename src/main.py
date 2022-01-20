@@ -2,6 +2,7 @@
 
 import json
 
+import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 
@@ -13,12 +14,16 @@ class Game:
     def __init__(self):
         self.states = {}
         self.win_w, self.win_h = 640, 480   # 保存窗口宽度和高度的变量
-        self.x, self.y = 0, 0
+        self.camera_x, self.camera_y, self.camera_z = 0, 0, 0
+        self.mouse_x, self.mouse_y = 0, 0
         self.phi, self.theta = 0, 0
         self.i = 0
         self.j = 0
         self.focal_length = 50
         self.realtime = False
+        self.p = np.zeros(3)      # 位置
+        self.v = np.zeros(3)      # 速度
+        self.r = 100           # 阻力
 
     def load_data(self):
         self.datasets = []
@@ -26,22 +31,31 @@ class Game:
             for line in fp:
                 self.datasets.append(json.loads(line))
 
-
     def mouseclick(self, button, state, x, y):
+        if button == 3:
+            glTranslate(0, 0, 0.01)
+        elif button == 4:
+            glTranslate(0, 0, -0.01)
         self.states[button] = state
-        self.x, self.y = x, y
+        self.mouse_x, self.mouse_y = x, y
+        glutPostRedisplay()
 
     def mousemotion(self, x, y):
-        if self.states.get(GLUT_LEFT_BUTTON) != GLUT_DOWN:
-            return
-        dx = self.x - x
-        dy = self.y - y
-        self.x, self.y = x, y
+        if self.states.get(GLUT_RIGHT_BUTTON) == GLUT_DOWN:
+            dx = self.mouse_x - x
+            dy = self.mouse_y - y
+            self.mouse_x, self.mouse_y = x, y
 
-        self.phi += 360 * dy / self.win_h
-        self.phi %= 360
-        self.theta += 360 * dx / self.win_w
-        self.theta %= 360
+            self.phi += 360 * dy / self.win_h
+            self.phi %= 360
+            self.theta += 360 * dx / self.win_w
+            self.theta %= 360
+        elif self.states.get(GLUT_LEFT_BUTTON) == GLUT_DOWN:
+            dx = (self.mouse_x - x) / self.win_w
+            dy = (self.mouse_y - y) / self.win_h
+            self.mouse_x, self.mouse_y = x, y
+            self.camera_x -= dx / 5
+            self.camera_y += dy / 5
 
         glutPostRedisplay()
 
@@ -50,6 +64,15 @@ class Game:
         if key == b'[':
             self.i = (self.i + len(self.datasets) - 1) % len(self.datasets)
         elif key == b']':
+            roll, pitch, yaw = self.datasets[self.i]['attitude']
+            r = R.from_euler('zxy', [roll, pitch, yaw])
+            x, y, z = self.datasets[self.i]['user_acceleration']
+            a = np.array([-x, z, -y])
+            a = r.inv().apply(a)
+            t = 0.1
+            self.v += a * t
+            self.v *= max(0, 1 - self.r * np.linalg.norm(self.v) * t)
+            self.p += self.v * t
             self.i = (self.i + 1) % len(self.datasets)
         elif key == b' ':
             glutDestroyWindow(glutGetWindow())
@@ -75,7 +98,6 @@ class Game:
             self.realtime = not self.realtime
 
     def draw(self):
-        print('draw')
         if self.realtime:
             glutPostRedisplay()
             self.j += 1
@@ -87,6 +109,7 @@ class Game:
         glPushMatrix()
 
         # 设置视点
+        glTranslate(self.camera_x, self.camera_y, self.camera_z)
         lxLookAt(0.50, self.phi, self.theta)
 
         glPushMatrix()
@@ -94,6 +117,8 @@ class Game:
         lxCoordinateSystem()
         glPopMatrix()
         glPushMatrix()
+
+        glTranslate(*self.p)
 
         roll, pitch, yaw = self.datasets[self.i]['attitude']
         lxRotate(roll, pitch, yaw)
@@ -106,11 +131,19 @@ class Game:
         lxVertex3f(x, y, z)
         glEnd()
 
-        # x, y, z = datasets[self.i]['user_acceleration']
-        # glBegin(GL_LINES)
-        # lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
-        # lxVertex3f(x, y, z)
-        # glEnd()
+        x, y, z = self.datasets[self.i]['user_acceleration']
+        glBegin(GL_LINES)
+        lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
+        lxVertex3f(x, y, z)
+        glEnd()
+
+        '''
+        x, y, z, _ = self.datasets[self.i]['magnetic_field']
+        glBegin(GL_LINES)
+        lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
+        glVertex3f(x, y, z)
+        glEnd()
+        '''
 
         glPopMatrix()
         glPopMatrix()
