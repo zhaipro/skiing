@@ -1,12 +1,39 @@
-# -*- coding: utf-8 -*-
-
+# https://download.blender.org/release/Blender2.83/
 import json
 
 import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLUT import *
+from OpenGL.GLU import *
 
+import utils
 from gllx import *
+
+import matplotlib.cm
+# from vectors import *
+from math import *
+
+
+func = utils.gen_func(65, 15, 10, 40 * 1000 / 60 / 60)
+
+light = (1,2,3)
+faces = [
+    [(1,0,0), (0,1,0), (0,0,1)],
+    [(1,0,0), (0,0,-1), (0,1,0)],
+    [(1,0,0), (0,0,1), (0,-1,0)],
+    [(1,0,0), (0,-1,0), (0,0,-1)],
+    [(-1,0,0), (0,0,1), (0,1,0)],
+    [(-1,0,0), (0,1,0), (0,0,-1)],
+    [(-1,0,0), (0,-1,0), (0,0,1)],
+    [(-1,0,0), (0,0,-1), (0,-1,0)],
+]
+def normal(face):
+    return(cross(subtract(face[1], face[0]), subtract(face[2], face[0])))
+  
+blues = matplotlib.cm.get_cmap('Blues')
+  
+def shade(face,color_map=blues,light=(1,2,3)):
+    return color_map(1 - dot(unit(normal(face)), unit(light)))
 
 
 class Game:
@@ -21,15 +48,7 @@ class Game:
         self.j = 0
         self.focal_length = 50
         self.realtime = False
-        self.p = np.zeros(3)      # 位置
-        self.v = np.zeros(3)      # 速度
-        self.r = 0           # 阻力
-
-    def load_data(self):
-        self.datasets = []
-        with open('data_circle.json') as fp:
-            for line in fp:
-                self.datasets.append(json.loads(line))
+        self.skiter = utils.Skiter(65, 15)
 
     def mouse(self, button, state, x, y):
         if button == 3:
@@ -62,18 +81,9 @@ class Game:
     def keyboard(self, key, x, y):
         glutPostRedisplay()
         if key == b'[':
-            self.i = (self.i + len(self.datasets) - 1) % len(self.datasets)
+            self.i = (self.i + 180 - 1) % 180
         elif key == b']':
-            roll, pitch, yaw = self.datasets[self.i]['attitude']
-            r = R.from_euler('zxy', [roll, pitch, yaw])
-            x, y, z = self.datasets[self.i]['user_acceleration']
-            a = np.array([-x, z, -y])
-            a = r.inv().apply(a)
-            t = 0.1
-            self.v += a * t
-            self.v *= max(0, 1 - self.r * np.linalg.norm(self.v) * t)
-            self.p += self.v * t
-            self.i = (self.i + 1) % len(self.datasets)
+            self.i = (self.i + 1) % 180
         elif key == b' ':
             glutDestroyWindow(glutGetWindow())
         elif key == b'w':
@@ -111,40 +121,39 @@ class Game:
 
         # 设置视点
         glTranslate(self.camera_x, self.camera_y, self.camera_z)
-        lxLookAt(0.50, self.phi, self.theta)
+        lxLookAt(8.0, self.phi, self.theta)
+
+        glRotate(-90, 1, 0, 0)
 
         glPushMatrix()
-        glScale(0.10, 0.10, 0.10)
         lxCoordinateSystem()
         glPopMatrix()
         glPushMatrix()
 
-        glTranslate(*self.p)
+        # glutWireTeapot(0.5)
 
-        roll, pitch, yaw = self.datasets[self.i]['attitude']
-        lxRotate(roll, pitch, yaw)
-        lxDrawPhone()
+        lxDrawFaces(faces)
 
-        x, y, z = self.datasets[self.i]['gravity']
+        lxDrawSnow(self.skiter._a * 180 / np.pi)
 
+        self.skiter.func(self.i)
+
+        x, y, z = self.skiter.f
+        glColor4f(0.0, 1.0, 1.0, 1.0)
         glBegin(GL_LINES)
-        lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
-        lxVertex3f(x, y, z)
-        glEnd()
-
-        x, y, z = self.datasets[self.i]['user_acceleration']
-        glBegin(GL_LINES)
-        lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
-        lxVertex3f(x, y, z)
-        glEnd()
-
-        '''
-        x, y, z, _ = self.datasets[self.i]['magnetic_field']
-        glBegin(GL_LINES)
-        lxVertex3f(0.0, 0.0, 0.0)      # 设置x轴顶点（x轴负方向）
+        glVertex3f(0.0, 0.0, 0.0)
         glVertex3f(x, y, z)
         glEnd()
-        '''
+
+        lxDrawSki(self.skiter._a * 180 / np.pi, self.i)
+
+        glScale(0.01, 0.01, 0.01)
+        x, y, z = self.skiter.F_lat
+        glColor4f(1.0, 0.0, 1.0, 1.0)
+        glBegin(GL_LINES)
+        glVertex3f(0.0, 0.0, 0.0)
+        glVertex3f(x, y, z)
+        glEnd()
 
         glPopMatrix()
         glPopMatrix()
@@ -171,6 +180,10 @@ class Game:
         glClearColor(0.5, 0.5, 0.5, 1.0)    # 设置画布背景色
         glEnable(GL_DEPTH_TEST)             # 开启深度测试，实现遮挡关系
 
+        # gluPerspective(45, 1, 0.1, 50.0)
+        # glEnable(GL_CULL_FACE)
+        glCullFace(GL_BACK)
+
     def main(self):
         glutMainLoop()                      # 进入glut主循环
 
@@ -178,5 +191,4 @@ class Game:
 if __name__ == '__main__':
     game = Game()
     game.init()
-    game.load_data()
     game.main()
